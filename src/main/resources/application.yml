@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: microservice-test
+server:
+  port: 8762
+  contextPath: /microservice-test
+springfox:
+  documentation:
+    swagger:
+      v2:
+        path: /api-docs
+eureka: 
+  client:
+    service-url: 
+      defaultZone: http://localhost:8761/eureka

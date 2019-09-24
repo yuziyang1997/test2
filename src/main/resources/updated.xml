@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:context="http://www.springframework.org/schema/context" xmlns:http="http://www.springframework.org/schema/integration/http" xmlns:int="http://www.springframework.org/schema/integration" xmlns:jdbc="http://www.springframework.org/schema/integration/jdbc" xmlns:jee="http://www.springframework.org/schema/jee" xmlns:p="http://www.springframework.org/schema/p" xmlns:tx="http://www.springframework.org/schema/tx" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="   http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd   http://www.springframework.org/schema/jee http://www.springframework.org/schema/jee/spring-jee-4.2.xsd   http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.2.xsd   http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd   http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.3.xsd   http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.3.xsd   http://www.springframework.org/schema/integration/http http://www.springframework.org/schema/integration/http/spring-integration-http-4.3.xsd">
+	
+	<context:annotation-config/>
+	
+	<context:component-scan base-package="com.ahm.ngt"/>
+	
+  	<bean class="com.ahm.ngt.nei.dao.impl.CommonDAOImpl" id="commonDAO">
+		<property name="dataSource" ref="neiDataSource"/>
+	</bean>
+	
+	<bean class="com.ahm.ngt.nei.handler.impl.BadgeUpdateHandlerImpl" id="badgeUpdateHandler"/>
+
+	<bean class="com.ahm.ngt.nei.service.impl.BadgeUpdateServiceImpl" id="badgeUpdateService"/>
+	
+	<bean class="com.ahm.ngt.nei.service.impl.NotificationEngineServiceImpl" id="notificationEngineService">
+		<property name="badgeUpdateDAOImpl" ref="badgeUpdateDAO"/>
+	</bean>
+	
+	
+	
+		
+
+	<!-- and this is the message listener container -->
+	<bean class="org.springframework.jms.listener.DefaultMessageListenerContainer" id="jmsContainer">
+	    <property name="connectionFactory" ref="neiQueueConnectionFactory"/>
+	    <property name="destination" ref="pushBadgeNEIQueue"/>
+	    <property name="messageListener" ref="badgeUpdateHandler"/>
+	    <property name="concurrentConsumers" value="5"/>
+	    <property name="maxConcurrentConsumers" value="25"/>
+	</bean>	
+	<!-- Introducing the Active MQ - End -->
+
+	<!-- DAO Configurations - Start -->
+	
+	
+	<!--  start HNACVC-39 -->
+	<bean class="org.springframework.orm.hibernate5.LocalSessionFactoryBean" id="sessionFactory">
+		<property name="dataSource" ref="neiDataSource"/>
+		<property name="packagesToScan" value="com.ahm.ngt.nei.entity"/>
+		<property name="mappingResources">			
+			<list>
+				<value>hbm/BadgePush.hbm.xml</value>
+				<value>hbm/BadgeStatus.hbm.xml</value>
+				<value>hbm/PushTracker.hbm.xml</value>
+				<value>hbm/PushTrackerError.hbm.xml</value>
+			</list>
+		</property>
+		<property name="hibernateProperties">
+			<props>
+				<prop key="hibernate.dialect">org.hibernate.dialect.PostgreSQLDialect</prop>
+				<prop key="hibernate.show_sql">true</prop>
+				<prop key="hibernate.hbm2ddl.auto">create</prop>
+				<prop key="hibernate.format_sql">true</prop>
+				<prop key="hibernate.query.substitutions">true=1 false=0</prop>
+			</props>
+		</property>
+	</bean>
+
+	<bean class="com.ahm.ngt.nei.dao.impl.BadgeUpdateDAOImpl" id="badgeUpdateDAO">
+		<property name="sessionFactory" ref="sessionFactory"/>
+	</bean>
+	<!--  end HNACVC-39 -->	
+	<!-- DAO Configurations - End -->
+	
+	<!--  start HNACVC-39 -->
+	<bean class="org.springframework.orm.hibernate5.HibernateTransactionManager" id="transactionManager">
+		<property name="sessionFactory" ref="sessionFactory"/>
+	</bean>
+
+	<tx:annotation-driven/>
+	<!--  end HNACVC-39 -->
+	
+	<!-- Start Ping Service configuration -->
+	<int:channel id="outboundChannel"/>
+	<int:channel id="JdbcMessage"/>
+	<int:channel id="exceptionTransformationChannel"/>
+	<int:channel id="JdbcOutputMessage"/>
+
+	<http:inbound-gateway error-channel="exceptionTransformationChannel" path="/pingservice" reply-channel="outboundChannel" request-channel="JdbcMessage" supported-methods="GET"/>
+
+	<jdbc:outbound-gateway data-source="neiDataSource" query="SELECT GETDATE()" reply-channel="JdbcOutputMessage" request-channel="JdbcMessage"/>
+
+	<int:service-activator id="NEIPingServiceE" input-channel="exceptionTransformationChannel" method="sendErrorMail" output-channel="outboundChannel" ref="pingService">
+	</int:service-activator>
+
+	<int:service-activator id="NEIPingService" input-channel="JdbcOutputMessage" method="testNEI" output-channel="outboundChannel" ref="pingService">
+	</int:service-activator>
+	<!-- End Ping Service configuration -->
+</beans>
